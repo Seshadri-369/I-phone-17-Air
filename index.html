@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR with Blender Animation + Sound</title>
+  <title>AR with Blender Animation + Sound (Smooth)</title>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 </head>
 <body>
   <a-scene
-    mindar-image="imageTargetSrc: ./targets.mind"
+    mindar-image="imageTargetSrc: ./targets.mind; filterMinCF: 0.001; filterBeta: 0.1"
     vr-mode-ui="enabled:false"
     device-orientation-permission-ui="enabled:false">
 
