@@ -3,45 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR with Blender Animation + Sound</title>
+  <title>Markerless AR with Blender Animation + Sound</title>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
 </head>
 <body>
   <a-scene
     vr-mode-ui="enabled: false"
     embedded
+    renderer="colorManagement: true; physicallyCorrectLights"
+    webxr="requiredFeatures: hit-test; optionalFeatures: dom-overlay;"
     xr-mode-ui="enabled: true"
-    webxr="optionalFeatures: hit-test, local-floor"
-    renderer="colorManagement: true; physicallyCorrectLights: true;">
+    background="color: #000000">
 
+    <!-- Camera -->
+    <a-camera position="0 0 0" listener></a-camera>
+
+    <!-- Lighting for realism -->
+    <a-entity light="type: hemisphere; intensity: 1"></a-entity>
+    <a-entity light="type: directional; intensity: 0.8" position="1 2 1"></a-entity>
+
+    <!-- Assets -->
     <a-assets>
       <a-asset-item id="animatedModel" src="./trial.glb"></a-asset-item>
       <audio id="modelSound" src="./sound.mp3" preload="auto"></audio>
     </a-assets>
 
-    <!-- Camera -->
-    <a-camera position="0 0 0" look-controls listener></a-camera>
-
-    <!-- Placement reticle -->
-    <a-entity id="reticle"
-      geometry="primitive: ring; radiusInner: 0.05; radiusOuter: 0.06"
-      material="color: yellow; shader: flat;"
-      rotation="-90 0 0"
+    <!-- The model (initially hidden) -->
+    <a-gltf-model 
+      id="myModel"
+      src="#animatedModel"
+      scale="0.5 0.5 0.5"
       visible="false">
-    </a-entity>
+    </a-gltf-model>
 
-    <!-- Model wrapper (hidden until placed) -->
-    <a-entity id="modelWrapper" visible="false">
-      <a-gltf-model 
-        id="myModel"
-        src="#animatedModel"
-        scale="0.75 0.75 0.75"
-        rotation="0 0 0">
-      </a-gltf-model>
-
-      <!-- Sound -->
-      <a-entity id="soundEntity" sound="src: #modelSound; autoplay: false; positional: false"></a-entity>
-    </a-entity>
+    <!-- Sound -->
+    <a-entity id="soundEntity" sound="src: #modelSound; autoplay: false; positional: false"></a-entity>
   </a-scene>
 
   <script>
@@ -63,66 +59,66 @@
             this.action = this.mixer.clipAction(clip);
             this.action.play();
           } else {
-            console.warn("No 'Scene' animation found in GLTF");
+            console.warn("No 'Scene' animation found in GLB");
           }
         });
       },
       tick: function (t, dt) {
         if (this.mixer) this.mixer.update(dt / 1000);
       },
-      playAction: function () { if (this.action) this.action.play(); },
-      stopAction: function () { if (this.action) this.action.stop(); }
+      playAction: function () {
+        if (this.action) this.action.play();
+      },
+      stopAction: function () {
+        if (this.action) this.action.stop();
+      }
     });
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const sceneEl = document.querySelector('a-scene');
-      const modelWrapper = document.querySelector('#modelWrapper');
-      const model = document.querySelector('#myModel');
-      const soundEntity = document.querySelector('#soundEntity');
-      const reticle = document.querySelector('#reticle');
+    // Hit-test placement
+    AFRAME.registerComponent("ar-hit-test", {
+      init: function () {
+        const sceneEl = this.el.sceneEl;
+        const model = document.querySelector("#myModel");
+        const soundEntity = document.querySelector("#soundEntity");
 
-      model.setAttribute('play-blender-action', '');
+        let hitTestSource = null;
+        let localSpace = null;
+        let lastHit = null;
 
-      // Unlock audio once
-      const unlockAudio = () => {
-        soundEntity.components.sound.playSound();
-        soundEntity.components.sound.stopSound();
-        document.body.removeEventListener('click', unlockAudio);
-      };
-      document.body.addEventListener('click', unlockAudio);
+        sceneEl.renderer.xr.addEventListener("sessionstart", async () => {
+          const session = sceneEl.renderer.xr.getSession();
+          const viewerSpace = await session.requestReferenceSpace("viewer");
+          hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+          localSpace = await session.requestReferenceSpace("local");
 
-      // WebXR Hit Test logic
-      sceneEl.renderer.xr.addEventListener('sessionstart', () => {
-        const session = sceneEl.renderer.xr.getSession();
-        session.addEventListener('select', () => {
-          if (reticle.visible) {
-            const pos = reticle.getAttribute('position');
-            modelWrapper.setAttribute('position', pos);
-            modelWrapper.setAttribute('visible', true);
+          // Tap to place
+          sceneEl.addEventListener("click", () => {
+            if (lastHit) {
+              const pose = lastHit.getPose(localSpace);
+              model.setAttribute("position", `${pose.transform.position.x} ${pose.transform.position.y} ${pose.transform.position.z}`);
+              model.setAttribute("visible", "true");
 
-            // Play sound + animation
-            soundEntity.components.sound.playSound();
-            const comp = model.components['play-blender-action'];
-            if (comp) comp.playAction();
+              // Start animation + sound
+              const comp = model.components['play-blender-action'];
+              if (comp) comp.playAction();
+              soundEntity.components.sound.playSound();
+            }
+          });
+        });
+
+        this.el.sceneEl.renderer.xr.addEventListener("beforexrframe", (time, frame) => {
+          if (!hitTestSource) return;
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+          if (hitTestResults.length > 0) {
+            lastHit = hitTestResults[0];
           }
         });
-      });
-
-      // Update reticle position every frame
-      sceneEl.addEventListener('loaded', () => {
-        const xrSystem = sceneEl.systems.webxr;
-        sceneEl.addEventListener('enter-vr', () => {
-          if (sceneEl.is('ar-mode')) {
-            xrSystem.addEventListener('hit-test-select', (ev) => {
-              const { position, rotation } = ev.detail;
-              reticle.setAttribute('position', position);
-              reticle.setAttribute('rotation', rotation);
-              reticle.setAttribute('visible', true);
-            });
-          }
-        });
-      });
+      }
     });
+
+    // Attach components
+    document.querySelector("#myModel").setAttribute("play-blender-action", "");
+    document.querySelector("a-scene").setAttribute("ar-hit-test", "");
   </script>
 </body>
 </html>
