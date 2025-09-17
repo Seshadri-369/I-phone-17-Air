@@ -19,7 +19,12 @@
     </a-assets>
 
     <!-- Camera with audio listener -->
-    <a-camera position="0 0 0" look-controls="enabled: false" wasd-controls="enabled: false" listener></a-camera>
+    <a-camera 
+      position="0 0 0" 
+      look-controls="enabled: false" 
+      wasd-controls="enabled: false" 
+      listener>
+    </a-camera>
     
     <a-entity id="target" mindar-image-target="targetIndex:0">
       <!-- Model -->
@@ -27,17 +32,20 @@
         id="myModel"
         src="#animatedModel"
         position="0 0 0"
-        scale="0.5 0.5 0.5"
+        scale="0.75 0.75 0.75"
         rotation="90 0 0">
       </a-gltf-model>
       
       <!-- Sound -->
-      <a-entity id="soundEntity" sound="src: #modelSound; autoplay: false; positional: false"></a-entity>
+      <a-entity 
+        id="soundEntity" 
+        sound="src: #modelSound; autoplay: false; positional: false">
+      </a-entity>
     </a-entity>
   </a-scene>
 
   <script>
-    // Custom component to play Blender's "Action" animation
+    // Custom component to play Blender's "Scene" animation
     AFRAME.registerComponent('play-blender-action', {
       init: function () {
         this.mixer = null;
@@ -50,13 +58,13 @@
           const clips = model.animations || model.scene?.animations || [];
           console.log("Available clips:", clips);
 
-          // Find "Action" clip
-          const clip = THREE.AnimationClip.findByName(clips, 'Action');
+          // Find "Scene" clip (instead of "Action")
+          const clip = THREE.AnimationClip.findByName(clips, 'Scene');
           if (clip) {
             this.action = this.mixer.clipAction(clip);
             this.action.play();
           } else {
-            console.warn("No 'Action' animation found in GLTF");
+            console.warn("No 'Scene' animation found in GLTF");
           }
         });
       },
