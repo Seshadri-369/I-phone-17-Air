@@ -3,41 +3,103 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Markerless AR with Blender Animation + Sound</title>
+  <title>AR with Blender Animation + Product Features</title>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    /* Overlay UI */
+    #instruction {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 18px;
+      font-weight: bold;
+      color: white;
+      background: rgba(0,0,0,0.6);
+      padding: 8px 16px;
+      border-radius: 8px;
+      text-align: center;
+      z-index: 9999;
+    }
+
+    #features {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 400px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 16px;
+      line-height: 1.6;
+      z-index: 9999;
+    }
+
+    #features ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    #features li::before {
+      content: "✔ ";
+      color: #4CAF50;
+    }
+  </style>
 </head>
 <body>
+  <!-- Instruction text -->
+  <div id="instruction">📱 Keep your phone on the tracker to have a live preview of the mobile</div>
+
+  <!-- Product features -->
+  <div id="features">
+    <ul>
+      <li>6.5-inch All Screen OLED Display</li>
+      <li>A19 Pro Chip</li>
+      <li>48MP Fusion Camera System</li>
+      <li>Dual E-Sim</li>
+      <li>5.64mm Thickness</li>
+    </ul>
+  </div>
+
   <a-scene
-    vr-mode-ui="enabled: false"
-    embedded
-    renderer="colorManagement: true; physicallyCorrectLights"
-    webxr="requiredFeatures: hit-test; optionalFeatures: dom-overlay;"
-    xr-mode-ui="enabled: true"
-    background="color: #000000">
+    mindar-image="imageTargetSrc: ./targets.mind; filterMinCF: 0.001; filterBeta: 0.1"
+    vr-mode-ui="enabled:false"
+    device-orientation-permission-ui="enabled:false">
 
-    <!-- Camera -->
-    <a-camera position="0 0 0" listener></a-camera>
-
-    <!-- Lighting for realism -->
-    <a-entity light="type: hemisphere; intensity: 1"></a-entity>
-    <a-entity light="type: directional; intensity: 0.8" position="1 2 1"></a-entity>
-
-    <!-- Assets -->
     <a-assets>
       <a-asset-item id="animatedModel" src="./trial.glb"></a-asset-item>
       <audio id="modelSound" src="./sound.mp3" preload="auto"></audio>
     </a-assets>
 
-    <!-- The model (initially hidden) -->
-    <a-gltf-model 
-      id="myModel"
-      src="#animatedModel"
-      scale="0.5 0.5 0.5"
-      visible="false">
-    </a-gltf-model>
-
-    <!-- Sound -->
-    <a-entity id="soundEntity" sound="src: #modelSound; autoplay: false; positional: false"></a-entity>
+    <!-- Camera with audio listener -->
+    <a-camera 
+      position="0 0 0" 
+      look-controls="enabled: false" 
+      wasd-controls="enabled: false" 
+      listener>
+    </a-camera>
+    
+    <a-entity id="target" mindar-image-target="targetIndex:0">
+      <!-- Model -->
+      <a-gltf-model 
+        id="myModel"
+        src="#animatedModel"
+        position="0 0 0"
+        scale="0.75 0.75 0.75"
+        rotation="0 0 0">
+      </a-gltf-model>
+      
+      <!-- Sound -->
+      <a-entity 
+        id="soundEntity" 
+        sound="src: #modelSound; autoplay: false; positional: false">
+      </a-entity>
+    </a-entity>
   </a-scene>
 
   <script>
@@ -57,7 +119,6 @@
           const clip = THREE.AnimationClip.findByName(clips, 'Scene');
           if (clip) {
             this.action = this.mixer.clipAction(clip);
-            this.action.play();
           } else {
             console.warn("No 'Scene' animation found in GLB");
           }
@@ -67,58 +128,70 @@
         if (this.mixer) this.mixer.update(dt / 1000);
       },
       playAction: function () {
-        if (this.action) this.action.play();
+        if (this.action) {
+          this.action.reset(); // restart from beginning
+          this.action.play();
+        }
       },
       stopAction: function () {
         if (this.action) this.action.stop();
       }
     });
 
-    // Hit-test placement
-    AFRAME.registerComponent("ar-hit-test", {
-      init: function () {
-        const sceneEl = this.el.sceneEl;
-        const model = document.querySelector("#myModel");
-        const soundEntity = document.querySelector("#soundEntity");
+    document.addEventListener('DOMContentLoaded', () => {
+      const target = document.querySelector('#target');
+      const soundEntity = document.querySelector('#soundEntity');
+      const model = document.querySelector('#myModel');
 
-        let hitTestSource = null;
-        let localSpace = null;
-        let lastHit = null;
+      model.setAttribute('play-blender-action', '');
 
-        sceneEl.renderer.xr.addEventListener("sessionstart", async () => {
-          const session = sceneEl.renderer.xr.getSession();
-          const viewerSpace = await session.requestReferenceSpace("viewer");
-          hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-          localSpace = await session.requestReferenceSpace("local");
+      // --- Unlock audio on first user interaction ---
+      const unlockAudio = () => {
+        soundEntity.components.sound.playSound();
+        soundEntity.components.sound.stopSound();
+        document.body.removeEventListener('click', unlockAudio);
+      };
+      document.body.addEventListener('click', unlockAudio);
 
-          // Tap to place
-          sceneEl.addEventListener("click", () => {
-            if (lastHit) {
-              const pose = lastHit.getPose(localSpace);
-              model.setAttribute("position", `${pose.transform.position.x} ${pose.transform.position.y} ${pose.transform.position.z}`);
-              model.setAttribute("visible", "true");
+      // Marker found
+      target.addEventListener('targetFound', () => {
+        console.log("Target Found!");
+        soundEntity.components.sound.playSound();
+        const comp = model.components['play-blender-action'];
+        if (comp) comp.playAction();
+      });
 
-              // Start animation + sound
-              const comp = model.components['play-blender-action'];
-              if (comp) comp.playAction();
-              soundEntity.components.sound.playSound();
-            }
-          });
-        });
+      // Marker lost
+      target.addEventListener('targetLost', () => {
+        console.log("Target Lost!");
+        soundEntity.components.sound.pauseSound();
+        const comp = model.components['play-blender-action'];
+        if (comp) comp.stopAction();
+      });
 
-        this.el.sceneEl.renderer.xr.addEventListener("beforexrframe", (time, frame) => {
-          if (!hitTestSource) return;
-          const hitTestResults = frame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length > 0) {
-            lastHit = hitTestResults[0];
-          }
-        });
-      }
+      // --- Touch interaction for model rotation ---
+      let isDragging = false;
+      let startX = 0;
+      let currentRotation = 0;
+
+      document.body.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        startX = e.touches[0].clientX;
+      });
+
+      document.body.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        const deltaX = e.touches[0].clientX - startX;
+        const rotationY = currentRotation + deltaX * 0.5; // sensitivity
+        model.setAttribute('rotation', `0 ${rotationY} 0`);
+      });
+
+      document.body.addEventListener('touchend', (e) => {
+        isDragging = false;
+        const rot = model.getAttribute('rotation');
+        currentRotation = rot.y;
+      });
     });
-
-    // Attach components
-    document.querySelector("#myModel").setAttribute("play-blender-action", "");
-    document.querySelector("a-scene").setAttribute("ar-hit-test", "");
   </script>
 </body>
 </html>
